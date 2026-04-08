@@ -5,7 +5,7 @@ const COLS = 20;
 const ROWS = 15;
 const PLAYER_SPEED = 3;
 const ENEMY_SPEED = 1.2;
-const MAX_HP = 5;
+const MAX_HP = 1;
 const INVINCIBLE_DURATION = 2000;
 const DETECTION_RANGE = 150;
 
