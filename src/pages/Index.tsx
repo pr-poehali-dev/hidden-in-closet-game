@@ -111,9 +111,10 @@ export default function Index() {
   const lastTimeRef = useRef<number>(0);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    stateRef.current.keys[e.key.toLowerCase()] = true;
+    e.preventDefault();
+    stateRef.current.keys[e.code] = true;
     const s = stateRef.current;
-    if ((e.key.toLowerCase() === "e" || e.key === " ") && s.gameState === "playing") {
+    if ((e.code === "KeyE" || e.code === "Space") && s.gameState === "playing") {
       if (s.nearCloset && !s.inCloset) {
         s.inCloset = true;
       } else if (s.inCloset) {
@@ -123,7 +124,7 @@ export default function Index() {
   }, []);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    stateRef.current.keys[e.key.toLowerCase()] = false;
+    stateRef.current.keys[e.code] = false;
   }, []);
 
   useEffect(() => {
@@ -298,10 +299,10 @@ export default function Index() {
 
       if (!s.inCloset) {
         let dx = 0, dy = 0;
-        if (s.keys["arrowleft"] || s.keys["a"]) dx -= PLAYER_SPEED;
-        if (s.keys["arrowright"] || s.keys["d"]) dx += PLAYER_SPEED;
-        if (s.keys["arrowup"] || s.keys["w"]) dy -= PLAYER_SPEED;
-        if (s.keys["arrowdown"] || s.keys["s"]) dy += PLAYER_SPEED;
+        if (s.keys["ArrowLeft"] || s.keys["KeyA"]) dx -= PLAYER_SPEED;
+        if (s.keys["ArrowRight"] || s.keys["KeyD"]) dx += PLAYER_SPEED;
+        if (s.keys["ArrowUp"] || s.keys["KeyW"]) dy -= PLAYER_SPEED;
+        if (s.keys["ArrowDown"] || s.keys["KeyS"]) dy += PLAYER_SPEED;
         if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
         s.player = moveWithCollision(s.player, dx, dy, 12);
       }
