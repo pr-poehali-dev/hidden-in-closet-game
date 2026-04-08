@@ -105,7 +105,10 @@ export default function Index() {
     nearCloset: boolean;
     surviveTimer: number;
     winTime: number;
-  }>({ hp: MAX_HP, gameState: "menu", inCloset: false, nearCloset: false, surviveTimer: 0, winTime: 60 });
+    screaming: boolean;
+  }>({ hp: MAX_HP, gameState: "menu", inCloset: false, nearCloset: false, surviveTimer: 0, winTime: 60, screaming: false });
+
+  const screamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -135,6 +138,58 @@ export default function Index() {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [handleKeyDown, handleKeyUp]);
+
+  const playScream = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const now = ctx.currentTime;
+
+      const makeNoise = (freq: number, type: OscillatorType, gain: number, start: number, end: number) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now + start);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + end);
+        g.gain.setValueAtTime(gain, now + start);
+        g.gain.exponentialRampToValueAtTime(0.001, now + end);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + end + 0.05);
+      };
+
+      makeNoise(900, "sawtooth", 1.2, 0, 0.8);
+      makeNoise(1400, "square", 0.8, 0, 0.6);
+      makeNoise(300, "sawtooth", 1.5, 0, 1.2);
+      makeNoise(2200, "sawtooth", 0.6, 0.05, 0.5);
+      makeNoise(80, "sawtooth", 2.0, 0, 1.5);
+
+      const bufSize = ctx.sampleRate * 1.5;
+      const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize) * 0.8;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.9, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+      noise.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noise.start(now);
+    } catch (_e) {
+      void _e;
+    }
+  }, []);
+
+  const triggerScreamer = useCallback(() => {
+    playScream();
+    setUiState((u) => ({ ...u, screaming: true }));
+    stateRef.current.shake = 60;
+    if (screamTimeoutRef.current) clearTimeout(screamTimeoutRef.current);
+    screamTimeoutRef.current = setTimeout(() => {
+      setUiState((u) => ({ ...u, screaming: false }));
+    }, 1200);
+  }, [playScream]);
 
   const startGame = useCallback(() => {
     const s = stateRef.current;
@@ -346,11 +401,11 @@ export default function Index() {
         s.invincible = true;
         s.invincibleTimer = INVINCIBLE_DURATION;
         s.screamAlpha = 1;
-        s.screamTimer = 600;
-        s.shake = 18;
+        s.screamTimer = 1200;
+        triggerScreamer();
         if (s.hp <= 0) {
           s.gameState = "gameover";
-          setUiState((u) => ({ ...u, gameState: "gameover", hp: 0 }));
+          setUiState((u) => ({ ...u, gameState: "gameover", hp: 0, screaming: false }));
         } else {
           setUiState((u) => ({ ...u, hp: s.hp }));
         }
@@ -428,7 +483,7 @@ export default function Index() {
 
     rafRef.current = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [triggerScreamer]);
 
   const W = COLS * TILE;
   const H = ROWS * TILE;
@@ -633,6 +688,85 @@ export default function Index() {
         )}
       </div>
 
+      {uiState.screaming && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "#000",
+          animation: "screamIn 0.05s ease-out",
+          overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "radial-gradient(ellipse at 50% 50%, #ff0000 0%, #880000 30%, #000 70%)",
+            animation: "screamPulse 0.1s infinite alternate",
+          }} />
+          <svg viewBox="0 0 200 220" style={{
+            width: "min(90vw, 90vh)", height: "min(90vw, 90vh)",
+            position: "relative", zIndex: 1,
+            filter: "drop-shadow(0 0 40px #ff0000) drop-shadow(0 0 80px #ff000088)",
+            animation: "screamShake 0.05s infinite",
+          }}>
+            <rect x="30" y="10" width="140" height="170" rx="10" fill="#1a0000"/>
+            <rect x="50" y="10" width="100" height="170" rx="5" fill="#220000"/>
+            <rect x="30" y="10" width="140" height="20" fill="#0a0000"/>
+
+            <rect x="55" y="50" width="35" height="30" rx="3" fill="#cc0000"/>
+            <rect x="110" y="50" width="35" height="30" rx="3" fill="#cc0000"/>
+            <rect x="60" y="55" width="25" height="18" fill="#ff6600"/>
+            <rect x="115" y="55" width="25" height="18" fill="#ff6600"/>
+            <rect x="65" y="58" width="12" height="10" fill="#ffff00"/>
+            <rect x="120" y="58" width="12" height="10" fill="#ffff00"/>
+            <rect x="69" y="61" width="5" height="5" fill="#000"/>
+            <rect x="124" y="61" width="5" height="5" fill="#000"/>
+
+            <rect x="85" y="100" width="30" height="8" rx="2" fill="#550000"/>
+            <rect x="88" y="95" width="4" height="6" fill="#550000"/>
+            <rect x="94" y="93" width="4" height="7" fill="#550000"/>
+            <rect x="100" y="93" width="4" height="7" fill="#550000"/>
+            <rect x="106" y="95" width="4" height="6" fill="#550000"/>
+
+            <rect x="45" y="125" width="110" height="50" rx="5" fill="#110000"/>
+            <rect x="50" y="128" width="100" height="5" fill="#cc0000"/>
+            <rect x="55" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="65" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="75" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="85" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="95" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="105" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="115" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="125" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="135" y="133" width="8" height="35" fill="#cc0000"/>
+            <rect x="50" y="165" width="100" height="5" fill="#cc0000"/>
+
+            <rect x="20" y="60" width="20" height="80" rx="3" fill="#1a0000"/>
+            <rect x="160" y="60" width="20" height="80" rx="3" fill="#1a0000"/>
+            <rect x="10" y="100" width="20" height="8" fill="#cc0000"/>
+            <rect x="0" y="90" width="15" height="6" fill="#880000"/>
+            <rect x="170" y="100" width="20" height="8" fill="#cc0000"/>
+            <rect x="185" y="90" width="15" height="6" fill="#880000"/>
+
+            <rect x="0" y="0" width="200" height="10" fill="rgba(255,0,0,0.15)"/>
+            <rect x="0" y="20" width="200" height="4" fill="rgba(255,0,0,0.08)"/>
+            <rect x="0" y="50" width="200" height="3" fill="rgba(255,0,0,0.08)"/>
+            <rect x="0" y="100" width="200" height="3" fill="rgba(255,0,0,0.08)"/>
+            <rect x="0" y="150" width="200" height="3" fill="rgba(255,0,0,0.06)"/>
+            <rect x="0" y="200" width="200" height="4" fill="rgba(255,0,0,0.08)"/>
+          </svg>
+          <div style={{
+            position: "absolute", bottom: "8%", left: "50%", transform: "translateX(-50%)",
+            color: "#ff0000", fontSize: "clamp(12px, 3vw, 24px)",
+            fontFamily: "'Press Start 2P', monospace",
+            textShadow: "0 0 20px #ff0000",
+            letterSpacing: "4px",
+            animation: "screamText 0.08s infinite",
+            whiteSpace: "nowrap",
+          }}>
+            ОН НАШЁЛ ТЕБЯ
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes flicker {
           0%,100% { opacity: 1; }
@@ -642,6 +776,26 @@ export default function Index() {
         @keyframes pulse {
           0%,100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+        @keyframes screamIn {
+          from { opacity: 0; transform: scale(1.3); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes screamPulse {
+          from { opacity: 0.7; }
+          to { opacity: 1; }
+        }
+        @keyframes screamShake {
+          0% { transform: translate(-3px, -2px) rotate(-1deg); }
+          25% { transform: translate(3px, 2px) rotate(1deg); }
+          50% { transform: translate(-2px, 3px) rotate(0deg); }
+          75% { transform: translate(2px, -3px) rotate(-0.5deg); }
+          100% { transform: translate(-3px, -2px) rotate(1deg); }
+        }
+        @keyframes screamText {
+          0% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.05); }
+          100% { transform: translateX(-50%) scale(1); }
         }
       `}</style>
     </div>
