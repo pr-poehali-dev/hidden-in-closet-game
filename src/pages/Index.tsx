@@ -141,41 +141,61 @@ export default function Index() {
 
   const playScream = useCallback(() => {
     try {
-      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const now = ctx.currentTime;
+      const actx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const now = actx.currentTime;
 
-      const makeNoise = (freq: number, type: OscillatorType, gain: number, start: number, end: number) => {
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
+      const compressor = actx.createDynamicsCompressor();
+      compressor.threshold.value = -6;
+      compressor.knee.value = 0;
+      compressor.ratio.value = 20;
+      compressor.attack.value = 0;
+      compressor.release.value = 0.1;
+      compressor.connect(actx.destination);
+
+      const masterGain = actx.createGain();
+      masterGain.gain.setValueAtTime(3.0, now);
+      masterGain.gain.exponentialRampToValueAtTime(0.01, now + 1.8);
+      masterGain.connect(compressor);
+
+      const makeOsc = (freq: number, type: OscillatorType, gainVal: number, freqEnd: number, dur: number, delay = 0) => {
+        const osc = actx.createOscillator();
+        const g = actx.createGain();
         osc.type = type;
-        osc.frequency.setValueAtTime(freq, now + start);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + end);
-        g.gain.setValueAtTime(gain, now + start);
-        g.gain.exponentialRampToValueAtTime(0.001, now + end);
+        osc.frequency.setValueAtTime(freq, now + delay);
+        osc.frequency.exponentialRampToValueAtTime(freqEnd, now + delay + dur);
+        g.gain.setValueAtTime(gainVal, now + delay);
+        g.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
         osc.connect(g);
-        g.connect(ctx.destination);
-        osc.start(now + start);
-        osc.stop(now + end + 0.05);
+        g.connect(masterGain);
+        osc.start(now + delay);
+        osc.stop(now + delay + dur + 0.05);
       };
 
-      makeNoise(900, "sawtooth", 1.2, 0, 0.8);
-      makeNoise(1400, "square", 0.8, 0, 0.6);
-      makeNoise(300, "sawtooth", 1.5, 0, 1.2);
-      makeNoise(2200, "sawtooth", 0.6, 0.05, 0.5);
-      makeNoise(80, "sawtooth", 2.0, 0, 1.5);
+      makeOsc(1200, "sawtooth", 2.0, 200,  1.6, 0);
+      makeOsc(800,  "sawtooth", 1.8, 150,  1.4, 0);
+      makeOsc(2400, "square",   1.5, 400,  0.8, 0);
+      makeOsc(600,  "sawtooth", 2.2, 80,   1.8, 0);
+      makeOsc(3200, "sawtooth", 1.0, 600,  0.5, 0.02);
+      makeOsc(100,  "sawtooth", 3.0, 50,   2.0, 0);
+      makeOsc(1800, "square",   1.2, 300,  1.0, 0.05);
+      makeOsc(950,  "sawtooth", 1.6, 100,  1.5, 0.03);
+      makeOsc(4000, "square",   0.8, 800,  0.4, 0);
 
-      const bufSize = ctx.sampleRate * 1.5;
-      const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const bufSize = actx.sampleRate * 2;
+      const buffer = actx.createBuffer(1, bufSize, actx.sampleRate);
       const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize) * 0.8;
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.setValueAtTime(0.9, now);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
-      noise.connect(noiseGain);
-      noiseGain.connect(ctx.destination);
-      noise.start(now);
+      for (let i = 0; i < bufSize; i++) {
+        const env = 1 - i / bufSize;
+        data[i] = (Math.random() * 2 - 1) * env * env * 2.5;
+      }
+      const noiseNode = actx.createBufferSource();
+      noiseNode.buffer = buffer;
+      const noiseGain = actx.createGain();
+      noiseGain.gain.setValueAtTime(2.5, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+      noiseNode.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noiseNode.start(now);
     } catch (_e) {
       void _e;
     }
@@ -188,7 +208,7 @@ export default function Index() {
     if (screamTimeoutRef.current) clearTimeout(screamTimeoutRef.current);
     screamTimeoutRef.current = setTimeout(() => {
       setUiState((u) => ({ ...u, screaming: false }));
-    }, 1200);
+    }, 1600);
   }, [playScream]);
 
   const startGame = useCallback(() => {
@@ -691,76 +711,146 @@ export default function Index() {
       {uiState.screaming && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#000",
-          animation: "screamIn 0.05s ease-out",
           overflow: "hidden",
+          animation: "screamFlash 0.06s steps(1) infinite",
         }}>
+          {/* Кровавый фон */}
           <div style={{
             position: "absolute", inset: 0,
-            background: "radial-gradient(ellipse at 50% 50%, #ff0000 0%, #880000 30%, #000 70%)",
-            animation: "screamPulse 0.1s infinite alternate",
+            background: "radial-gradient(ellipse at 50% 40%, #ff2200 0%, #cc0000 20%, #660000 45%, #1a0000 70%, #000 100%)",
+            animation: "bgPulse 0.07s steps(1) infinite",
           }} />
-          <svg viewBox="0 0 200 220" style={{
-            width: "min(90vw, 90vh)", height: "min(90vw, 90vh)",
-            position: "relative", zIndex: 1,
-            filter: "drop-shadow(0 0 40px #ff0000) drop-shadow(0 0 80px #ff000088)",
-            animation: "screamShake 0.05s infinite",
-          }}>
-            <rect x="30" y="10" width="140" height="170" rx="10" fill="#1a0000"/>
-            <rect x="50" y="10" width="100" height="170" rx="5" fill="#220000"/>
-            <rect x="30" y="10" width="140" height="20" fill="#0a0000"/>
 
-            <rect x="55" y="50" width="35" height="30" rx="3" fill="#cc0000"/>
-            <rect x="110" y="50" width="35" height="30" rx="3" fill="#cc0000"/>
-            <rect x="60" y="55" width="25" height="18" fill="#ff6600"/>
-            <rect x="115" y="55" width="25" height="18" fill="#ff6600"/>
-            <rect x="65" y="58" width="12" height="10" fill="#ffff00"/>
-            <rect x="120" y="58" width="12" height="10" fill="#ffff00"/>
-            <rect x="69" y="61" width="5" height="5" fill="#000"/>
-            <rect x="124" y="61" width="5" height="5" fill="#000"/>
+          {/* Глитч-полосы */}
+          {[15,32,51,68,80].map((top, i) => (
+            <div key={i} style={{
+              position: "absolute", left: 0, right: 0,
+              top: `${top}%`, height: `${[3,2,5,2,4][i]}%`,
+              background: `rgba(255,0,0,${[0.4,0.25,0.5,0.2,0.35][i]})`,
+              mixBlendMode: "screen",
+              transform: `translateX(${[-8,12,-15,6,-10][i]}%)`,
+              animation: `glitch${i} 0.1s steps(1) infinite`,
+            }} />
+          ))}
 
-            <rect x="85" y="100" width="30" height="8" rx="2" fill="#550000"/>
-            <rect x="88" y="95" width="4" height="6" fill="#550000"/>
-            <rect x="94" y="93" width="4" height="7" fill="#550000"/>
-            <rect x="100" y="93" width="4" height="7" fill="#550000"/>
-            <rect x="106" y="95" width="4" height="6" fill="#550000"/>
+          {/* МОРДА — огромная SVG на весь экран */}
+          <svg
+            viewBox="0 0 400 400"
+            preserveAspectRatio="xMidYMid slice"
+            style={{
+              position: "absolute", inset: 0,
+              width: "100%", height: "100%",
+              animation: "faceShake 0.04s steps(1) infinite",
+              filter: "drop-shadow(0 0 30px #ff0000) drop-shadow(0 0 60px #ff000099) contrast(1.2)",
+            }}
+          >
+            {/* Череп / голова */}
+            <ellipse cx="200" cy="180" rx="160" ry="175" fill="#0d0000"/>
+            <ellipse cx="200" cy="170" rx="145" ry="155" fill="#1a0000"/>
+            <ellipse cx="200" cy="160" rx="130" ry="140" fill="#220000"/>
 
-            <rect x="45" y="125" width="110" height="50" rx="5" fill="#110000"/>
-            <rect x="50" y="128" width="100" height="5" fill="#cc0000"/>
-            <rect x="55" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="65" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="75" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="85" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="95" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="105" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="115" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="125" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="135" y="133" width="8" height="35" fill="#cc0000"/>
-            <rect x="50" y="165" width="100" height="5" fill="#cc0000"/>
+            {/* Трещины на черепе */}
+            <polyline points="200,10 195,50 205,80 190,110" stroke="#550000" strokeWidth="3" fill="none"/>
+            <polyline points="190,110 170,130 165,160" stroke="#440000" strokeWidth="2" fill="none"/>
+            <polyline points="200,10 210,40 205,80" stroke="#440000" strokeWidth="2" fill="none"/>
+            <polyline points="80,60 100,90 90,120 110,140" stroke="#330000" strokeWidth="2" fill="none"/>
+            <polyline points="320,60 300,95 310,120 295,145" stroke="#330000" strokeWidth="2" fill="none"/>
 
-            <rect x="20" y="60" width="20" height="80" rx="3" fill="#1a0000"/>
-            <rect x="160" y="60" width="20" height="80" rx="3" fill="#1a0000"/>
-            <rect x="10" y="100" width="20" height="8" fill="#cc0000"/>
-            <rect x="0" y="90" width="15" height="6" fill="#880000"/>
-            <rect x="170" y="100" width="20" height="8" fill="#cc0000"/>
-            <rect x="185" y="90" width="15" height="6" fill="#880000"/>
+            {/* ГЛАЗА — огромные, пустые, с кровью */}
+            {/* Левый глаз */}
+            <ellipse cx="130" cy="155" rx="55" ry="48" fill="#000"/>
+            <ellipse cx="130" cy="155" rx="45" ry="38" fill="#0a0000"/>
+            <ellipse cx="130" cy="155" rx="32" ry="28" fill="#cc0000"/>
+            <ellipse cx="130" cy="155" rx="20" ry="18" fill="#ff2200"/>
+            <ellipse cx="130" cy="155" rx="10" ry="10" fill="#000"/>
+            <ellipse cx="125" cy="150" rx="4" ry="4" fill="#ffffff88"/>
+            {/* Кровь из левого глаза */}
+            <rect x="118" y="190" width="6" height="60" fill="#cc0000"/>
+            <rect x="126" y="193" width="5" height="55" fill="#aa0000"/>
+            <rect x="134" y="196" width="4" height="45" fill="#990000"/>
+            <ellipse cx="121" cy="250" rx="5" ry="8" fill="#880000"/>
 
-            <rect x="0" y="0" width="200" height="10" fill="rgba(255,0,0,0.15)"/>
-            <rect x="0" y="20" width="200" height="4" fill="rgba(255,0,0,0.08)"/>
-            <rect x="0" y="50" width="200" height="3" fill="rgba(255,0,0,0.08)"/>
-            <rect x="0" y="100" width="200" height="3" fill="rgba(255,0,0,0.08)"/>
-            <rect x="0" y="150" width="200" height="3" fill="rgba(255,0,0,0.06)"/>
-            <rect x="0" y="200" width="200" height="4" fill="rgba(255,0,0,0.08)"/>
+            {/* Правый глаз */}
+            <ellipse cx="270" cy="155" rx="55" ry="48" fill="#000"/>
+            <ellipse cx="270" cy="155" rx="45" ry="38" fill="#0a0000"/>
+            <ellipse cx="270" cy="155" rx="32" ry="28" fill="#cc0000"/>
+            <ellipse cx="270" cy="155" rx="20" ry="18" fill="#ff2200"/>
+            <ellipse cx="270" cy="155" rx="10" ry="10" fill="#000"/>
+            <ellipse cx="265" cy="150" rx="4" ry="4" fill="#ffffff88"/>
+            {/* Кровь из правого глаза */}
+            <rect x="258" y="190" width="6" height="58" fill="#cc0000"/>
+            <rect x="265" y="194" width="5" height="52" fill="#aa0000"/>
+            <rect x="272" y="197" width="4" height="46" fill="#990000"/>
+            <ellipse cx="261" cy="248" rx="5" ry="8" fill="#880000"/>
+
+            {/* Надбровные дуги — нависшие */}
+            <polygon points="75,120 185,130 160,105 85,100" fill="#110000"/>
+            <polygon points="325,120 215,130 240,105 315,100" fill="#110000"/>
+
+            {/* НОС — дыры */}
+            <ellipse cx="185" cy="215" rx="14" ry="18" fill="#000"/>
+            <ellipse cx="215" cy="215" rx="14" ry="18" fill="#000"/>
+            <ellipse cx="200" cy="225" rx="8" ry="5" fill="#110000"/>
+
+            {/* РОТ — огромный, с зубами */}
+            <path d="M 70 275 Q 200 400 330 275 Q 280 260 200 265 Q 120 260 70 275 Z" fill="#000"/>
+            <path d="M 75 278 Q 200 390 325 278 Q 270 268 200 272 Q 130 268 75 278 Z" fill="#0a0000"/>
+
+            {/* Зубы верхние */}
+            {[90,118,146,174,202,226,254,282].map((x, i) => (
+              <polygon key={`ut${i}`}
+                points={`${x},275 ${x+20},275 ${x+10},${i%2===0?315:305}`}
+                fill={i%3===0?"#eeeecc":"#ddddbb"}
+              />
+            ))}
+            {/* Зубы нижние */}
+            {[95,123,151,179,207,235,263].map((x, i) => (
+              <polygon key={`lt${i}`}
+                points={`${x},310 ${x+18},310 ${x+9},${285+i%2*8}`}
+                fill={i%3===0?"#ddddaa":"#cccc99"}
+              />
+            ))}
+
+            {/* Кровь во рту */}
+            <ellipse cx="200" cy="320" rx="60" ry="30" fill="#660000"/>
+            <ellipse cx="200" cy="330" rx="40" ry="20" fill="#880000"/>
+            {[100,130,160,190,220,250,280,305].map((x,i)=>(
+              <rect key={`blood${i}`} x={x} y="275" width="4" height={15+i%3*8} fill="#cc0000"/>
+            ))}
+
+            {/* Трещины под глазами */}
+            <polyline points="160,195 150,215 155,235 145,250" stroke="#550000" strokeWidth="2" fill="none"/>
+            <polyline points="240,195 250,218 245,238 255,252" stroke="#550000" strokeWidth="2" fill="none"/>
+
+            {/* Тёмные пятна / гниль */}
+            <ellipse cx="155" cy="240" rx="12" ry="8" fill="#0d0000" opacity="0.8"/>
+            <ellipse cx="245" cy="240" rx="12" ry="8" fill="#0d0000" opacity="0.8"/>
+            <ellipse cx="200" cy="250" rx="8" ry="5" fill="#110000" opacity="0.7"/>
+
+            {/* Сканлайны (имитация экрана) */}
+            {Array.from({length: 20}).map((_,i)=>(
+              <rect key={`sl${i}`} x="0" y={i*20} width="400" height="1" fill="rgba(0,0,0,0.3)"/>
+            ))}
           </svg>
+
+          {/* Белая вспышка поверх */}
           <div style={{
-            position: "absolute", bottom: "8%", left: "50%", transform: "translateX(-50%)",
-            color: "#ff0000", fontSize: "clamp(12px, 3vw, 24px)",
+            position: "absolute", inset: 0,
+            background: "white",
+            animation: "whiteFlash 0.12s steps(1) 3",
+            pointerEvents: "none",
+          }} />
+
+          {/* Текст */}
+          <div style={{
+            position: "absolute", bottom: "5%", left: 0, right: 0,
+            textAlign: "center",
+            color: "#fff",
+            fontSize: "clamp(14px, 4vw, 32px)",
             fontFamily: "'Press Start 2P', monospace",
-            textShadow: "0 0 20px #ff0000",
-            letterSpacing: "4px",
-            animation: "screamText 0.08s infinite",
-            whiteSpace: "nowrap",
+            textShadow: "0 0 10px #fff, 0 0 30px #ff0000, 0 0 60px #ff0000",
+            letterSpacing: "6px",
+            animation: "textFlick 0.09s steps(1) infinite",
           }}>
             ОН НАШЁЛ ТЕБЯ
           </div>
@@ -777,26 +867,52 @@ export default function Index() {
           0%,100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
-        @keyframes screamIn {
-          from { opacity: 0; transform: scale(1.3); }
-          to { opacity: 1; transform: scale(1); }
+        @keyframes screamFlash {
+          0%   { background: #000; }
+          15%  { background: #ff0000; }
+          30%  { background: #000; }
+          50%  { background: #cc0000; }
+          70%  { background: #000; }
+          85%  { background: #880000; }
+          100% { background: #000; }
         }
-        @keyframes screamPulse {
-          from { opacity: 0.7; }
-          to { opacity: 1; }
+        @keyframes bgPulse {
+          0%   { opacity: 1;   transform: scale(1); }
+          33%  { opacity: 0.7; transform: scale(1.05); }
+          66%  { opacity: 1;   transform: scale(0.98); }
+          100% { opacity: 0.8; transform: scale(1.02); }
         }
-        @keyframes screamShake {
-          0% { transform: translate(-3px, -2px) rotate(-1deg); }
-          25% { transform: translate(3px, 2px) rotate(1deg); }
-          50% { transform: translate(-2px, 3px) rotate(0deg); }
-          75% { transform: translate(2px, -3px) rotate(-0.5deg); }
-          100% { transform: translate(-3px, -2px) rotate(1deg); }
+        @keyframes faceShake {
+          0%   { transform: translate(0px,   0px)  scale(1.0) rotate(0deg); }
+          10%  { transform: translate(-12px, -8px) scale(1.05) rotate(-1.5deg); }
+          20%  { transform: translate(14px,  6px)  scale(0.97) rotate(1deg); }
+          30%  { transform: translate(-8px,  12px) scale(1.03) rotate(-0.5deg); }
+          40%  { transform: translate(10px, -10px) scale(1.06) rotate(1.5deg); }
+          50%  { transform: translate(-14px, 4px)  scale(0.98) rotate(-1deg); }
+          60%  { transform: translate(8px,   8px)  scale(1.04) rotate(0.5deg); }
+          70%  { transform: translate(-10px,-12px) scale(1.02) rotate(-1.5deg); }
+          80%  { transform: translate(12px,  10px) scale(0.96) rotate(1deg); }
+          90%  { transform: translate(-6px,  -6px) scale(1.05) rotate(-0.5deg); }
+          100% { transform: translate(0px,   0px)  scale(1.0) rotate(0deg); }
         }
-        @keyframes screamText {
-          0% { transform: translateX(-50%) scale(1); }
-          50% { transform: translateX(-50%) scale(1.05); }
-          100% { transform: translateX(-50%) scale(1); }
+        @keyframes whiteFlash {
+          0%   { opacity: 0.9; }
+          33%  { opacity: 0; }
+          66%  { opacity: 0.6; }
+          100% { opacity: 0; }
         }
+        @keyframes textFlick {
+          0%   { opacity: 1;   transform: scaleX(1); }
+          25%  { opacity: 0.3; transform: scaleX(1.04) translateY(-2px); }
+          50%  { opacity: 1;   transform: scaleX(0.98); }
+          75%  { opacity: 0.6; transform: scaleX(1.02) translateY(2px); }
+          100% { opacity: 1;   transform: scaleX(1); }
+        }
+        @keyframes glitch0 { 0%{transform:translateX(-8%)} 50%{transform:translateX(5%)} 100%{transform:translateX(-8%)} }
+        @keyframes glitch1 { 0%{transform:translateX(12%)} 50%{transform:translateX(-9%)} 100%{transform:translateX(12%)} }
+        @keyframes glitch2 { 0%{transform:translateX(-15%)} 50%{transform:translateX(11%)} 100%{transform:translateX(-15%)} }
+        @keyframes glitch3 { 0%{transform:translateX(6%)} 50%{transform:translateX(-4%)} 100%{transform:translateX(6%)} }
+        @keyframes glitch4 { 0%{transform:translateX(-10%)} 50%{transform:translateX(8%)} 100%{transform:translateX(-10%)} }
       `}</style>
     </div>
   );
